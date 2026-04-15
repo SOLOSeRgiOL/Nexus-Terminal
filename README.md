@@ -1,5 +1,7 @@
+# Nexus Terminal 📟
 
-Nexus Terminal 📟
+![Boot Screen](boot-screen.png)
+![Main Menu](main-menu.png)
 
 A lightweight, single-file, offline-first game library and emulation portal.
 
