@@ -1,3 +1,4 @@
+![Nexus Terminal Screenshot](screenshot.png)
 # **Nexus Terminal 📟**
 
 A lightweight, single-file, offline-first game library and emulation portal.
