@@ -1,0 +1,520 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Google Drive - My Drive</title>
+    <link rel="icon" type="image/png" href="https://ssl.gstatic.com/images/branding/product/1x/drive_2020q4_32dp.png">
+
+    <style>
+        :root {
+            --term-color: #00ff00;    
+            --term-bg: #050505;       
+            --panel-bg: #0a0a0a;      
+            --alert-color: #ff3333;   
+        }
+
+        body {
+            background-color: var(--term-bg); color: var(--term-color);
+            font-family: 'Courier New', Courier, monospace; margin: 0; min-height: 100vh;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            overflow: hidden; user-select: none;
+        }
+
+        #crt-overlay {
+            position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), 
+                        linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
+            background-size: 100% 2px, 3px 100%; pointer-events: none; z-index: 100;
+        }
+
+        #boot-screen { display: flex; flex-direction: column; width: 80vw; height: 80vh; font-size: 18px; z-index: 60; }
+        #lock-screen { display: none; flex-direction: column; align-items: center; text-align: center; z-index: 50; }
+        #lock-screen h1 { letter-spacing: 5px; text-shadow: 0 0 10px var(--term-color); text-transform: uppercase; }
+        #passcode-input {
+            background: #111; border: 1px solid var(--term-color); color: var(--term-color);
+            padding: 15px; font-size: 20px; text-align: center; letter-spacing: 5px; outline: none; margin-top: 20px; width: 250px; text-transform: lowercase;
+        }
+
+        #status-bar {
+            position: absolute; top: 0; left: 0; width: 100%; padding: 10px 20px; box-sizing: border-box;
+            display: none; justify-content: space-between; border-bottom: 1px solid var(--term-color); background: rgba(0,0,0,0.8); z-index: 40;
+        }
+        .bar-btn { background: none; border: 1px solid var(--term-color); color: var(--term-color); cursor: pointer; margin-left: 5px; font-family: inherit; }
+        .bar-btn:hover { background: var(--term-color); color: #000; }
+
+        #main-ui { display: none; width: 100%; height: 100vh; flex-direction: column; align-items: center; justify-content: center; margin-top: 20px; }
+        #library-view {
+            width: 80vw; max-width: 800px; background: var(--panel-bg); border: 1px solid var(--term-color);
+            padding: 20px; box-shadow: 0 0 20px rgba(0, 255, 0, 0.05); text-align: center; position: relative;
+        }
+
+        #game-list { margin: 20px 0; max-height: 250px; overflow-y: auto; text-align: left; }
+        .folder-header {
+            background: #111; border: 1px solid var(--term-color); padding: 10px; margin-top: 10px;
+            cursor: pointer; font-weight: bold; text-transform: uppercase;
+        }
+        .folder-header:hover { background: #222; }
+        .folder-content { display: none; padding-left: 20px; border-left: 1px dashed var(--term-color); margin-bottom: 10px; }
+        .folder-content.open { display: block; }
+        
+        .game-item { display: flex; justify-content: space-between; align-items: center; padding: 10px; border: 1px solid #333; margin-top: 5px; background: #050505; }
+        select { background: #111; color: var(--term-color); border: 1px solid var(--term-color); padding: 5px; font-family: inherit; outline: none; }
+
+        /* NOTES UI */
+        #notes-container { display: none; margin-top: 15px; text-align: left; border-top: 1px dashed var(--term-color); padding-top: 15px; }
+        #notes-area {
+            width: 100%; height: 100px; background: #050505; color: var(--term-color); border: 1px solid var(--term-color);
+            padding: 10px; font-family: 'Courier New', Courier, monospace; box-sizing: border-box; resize: vertical; outline: none;
+        }
+
+        #game-view { display: none; width: 100%; flex-direction: column; align-items: center; }
+        #game-wrapper { position: relative; width: 95vw; max-width: 1400px; height: 80vh; background-color: #000; border: 2px solid #333; display: flex; justify-content: center; align-items: center; }
+        #game-container, ruffle-player { width: 100%; height: 100%; }
+
+        input[type="file"] { display: none; }
+        .custom-btn {
+            padding: 10px 20px; font-size: 14px; font-family: inherit; font-weight: bold; background-color: var(--panel-bg);
+            color: var(--term-color); border: 1px solid var(--term-color); cursor: pointer; text-transform: uppercase; margin: 5px;
+        }
+        .custom-btn:hover { background-color: var(--term-color); color: #000; }
+        .delete-btn { border-color: var(--alert-color); color: var(--alert-color); }
+        .delete-btn:hover { background-color: var(--alert-color); color: #000; }
+    </style>
+</head>
+<body>
+
+    <div id="crt-overlay"></div>
+    <div id="boot-screen"></div>
+
+    <div id="status-bar">
+        <div id="sys-clock">TIME: 00:00:00</div>
+        <div>
+            <button id="toggle-notes-btn" class="bar-btn">📝 NOTES</button>
+            <button id="toggle-crt-btn" class="bar-btn">📺 CRT: ON</button>
+            <button onclick="setTheme('#00ff00')" class="bar-btn">GRN</button>
+            <button onclick="setTheme('#ffb000')" class="bar-btn">AMB</button>
+            <button onclick="setTheme('#00ffff')" class="bar-btn">CYN</button>
+        </div>
+    </div>
+
+    <div id="lock-screen">
+        <h1>OS Locked</h1>
+        <p>Enter developer credentials.</p>
+        <input type="password" id="passcode-input" placeholder="ID_REQ" autocomplete="off">
+    </div>
+
+    <div id="main-ui">
+        <div id="library-view">
+            <h2>LOCAL DIRECTORY</h2>
+
+            <!-- BANNER -->
+            <div style="text-align: center; margin-bottom: 20px;">
+                <a href="https://mesaredux.the-duck.co/games" target="_blank">
+                    <img src="https://mesaredux.com/assets/images/mesaredux.gif" alt="MESλREDUX: Unblocked Games for the masses!" style="border: 1px solid var(--term-color); max-width: 100%;">
+                </a>
+            </div>
+            
+            <div style="margin-bottom: 15px; text-align: left;">
+                <button id="create-folder-btn" class="custom-btn">+ New Directory</button>
+                <span>Upload to: </span>
+                <select id="upload-folder-select"></select>
+            </div>
+
+            <div id="game-list"></div>
+
+            <div id="notes-container">
+                <label style="font-weight: bold;">USER LOGS & CHEATS:</label>
+                <textarea id="notes-area" placeholder="Enter notes here..."></textarea>
+            </div>
+            
+            <div style="margin-top: 20px; border-top: 1px dashed var(--term-color); padding-top: 20px;">
+                <!-- NEW: Added .gba to the accepted file types -->
+                <label for="game-upload" class="custom-btn">Install 1 Game</label>
+                <input type="file" id="game-upload" accept=".swf, .html, .gba">
+
+                <label for="folder-upload" class="custom-btn">Bulk Install</label>
+                <input type="file" id="folder-upload" webkitdirectory multiple>
+                
+                <button id="export-btn" class="custom-btn" style="border-style: dashed;">Export Backup</button>
+                
+                <label for="import-upload" class="custom-btn" style="border-style: dashed; color: #00ffff; border-color: #00ffff;">Import Backup</label>
+                <input type="file" id="import-upload" accept=".json">
+
+                <button id="clear-db-btn" class="custom-btn delete-btn" style="float: right;">Format Drive</button>
+            </div>
+            <div style="margin-top: 15px; font-size: 12px; color: #777;">PANIC: PRESS [ESC] TO REDIRECT TO GOOGLE CLASSROOM</div>
+        </div>
+
+        <div id="game-view">
+            <div id="game-wrapper"><div id="game-container"></div></div>
+            <div style="display: flex; justify-content: space-between; width: 95vw; max-width: 1400px; margin-top: 10px;">
+                <button id="switch-game-btn" class="custom-btn">Return to Menu</button>
+                <button id="fullscreen-btn" class="custom-btn" style="border-color: #fff; color: #fff;">[ ] Fullscreen</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        window.RufflePlayer = window.RufflePlayer || {};
+        window.RufflePlayer.config = { letterbox: "on", forceScale: true };
+    </script>
+    <script src="https://unpkg.com/@ruffle-rs/ruffle"></script>
+    
+    <script>
+        // --- AUDIO ENGINE (FALLOUT TERMINAL CLACK) ---
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        let audioCtx;
+        function playSound(type) {
+            if (!audioCtx) audioCtx = new AudioContext();
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            
+            const now = audioCtx.currentTime;
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            
+            osc.connect(gain); gain.connect(audioCtx.destination);
+            
+            if (type === 'type') {
+                osc.type = 'square'; 
+                osc.frequency.setValueAtTime(100, now);
+                osc.frequency.exponentialRampToValueAtTime(10, now + 0.05);
+                gain.gain.setValueAtTime(0.1, now); 
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.05);
+                osc.start(now); osc.stop(now + 0.05);
+            }
+        }
+
+        document.addEventListener('keydown', (e) => { if(e.key !== 'Escape') playSound('type'); });
+        document.addEventListener('click', () => playSound('type'));
+
+        // --- BOOT & LOGIN ---
+        const sysAuthToken = "bmV4dXM="; // Password is 'nexus'
+        const passInput = document.getElementById("passcode-input");
+        const bootScreen = document.getElementById('boot-screen');
+        const lockScreen = document.getElementById('lock-screen');
+        
+        let bootStep = 0; const bootMsgs = ["INITIALIZING KERNEL...", "MOUNTING DIRECTORIES...", "CHECKING AUDIO DRIVERS...", "SYSTEM READY."];
+        
+        function runBootSequence() {
+            if (bootStep < bootMsgs.length) {
+                const p = document.createElement('div'); p.innerText = "> " + bootMsgs[bootStep];
+                bootScreen.appendChild(p); 
+                bootStep++; 
+                playSound('type'); 
+                let randomDelay = Math.floor(Math.random() * 800) + 400;
+                setTimeout(runBootSequence, randomDelay); 
+            } else { 
+                setTimeout(() => { bootScreen.style.display = "none"; lockScreen.style.display = "flex"; passInput.focus(); }, 800); 
+            }
+        }
+        window.onload = runBootSequence;
+
+        passInput.addEventListener("keypress", function(e) {
+            if (e.key === "Enter") {
+                if (btoa(passInput.value.toLowerCase()) === sysAuthToken) {
+                    lockScreen.style.display = "none"; document.getElementById("status-bar").style.display = "flex";
+                    document.getElementById("main-ui").style.display = "flex"; document.getElementById("library-view").style.display = "block";
+                    passInput.value = ""; initFolders(); loadGameLibrary(); 
+                } else {
+                    passInput.style.borderColor = "var(--alert-color)"; passInput.value = "";
+                    setTimeout(() => passInput.style.borderColor = "var(--term-color)", 500);
+                }
+            }
+        });
+
+        // PANIC BUTTON
+        document.addEventListener("keydown", function(e) {
+            if (e.key === "Escape") window.location.replace("https://classroom.google.com");
+        });
+
+        function setTheme(c) { document.documentElement.style.setProperty('--term-color', c); }
+        setInterval(() => { document.getElementById("sys-clock").innerText = "TIME: " + new Date().toLocaleTimeString('en-US', { hour12: true }); }, 1000);
+
+        // CRT TOGGLE
+        document.getElementById("toggle-crt-btn").addEventListener("click", function() {
+            const overlay = document.getElementById("crt-overlay");
+            if (overlay.style.display === "none") {
+                overlay.style.display = "block";
+                this.innerText = "📺 CRT: ON";
+            } else {
+                overlay.style.display = "none";
+                this.innerText = "📺 CRT: OFF";
+            }
+        });
+
+        // --- NOTES LOGIC ---
+        const notesContainer = document.getElementById("notes-container");
+        const notesArea = document.getElementById("notes-area");
+        
+        notesArea.value = localStorage.getItem("portal_notes") || "";
+        notesArea.addEventListener("input", () => { localStorage.setItem("portal_notes", notesArea.value); });
+        
+        document.getElementById("toggle-notes-btn").addEventListener("click", () => {
+            notesContainer.style.display = notesContainer.style.display === "block" ? "none" : "block";
+        });
+
+        // --- FOLDER MANAGEMENT ---
+        let folders = JSON.parse(localStorage.getItem("portal_folders")) || ["Unsorted"];
+        const folderSelect = document.getElementById("upload-folder-select");
+
+        function initFolders() {
+            folderSelect.innerHTML = "";
+            folders.forEach(f => {
+                const opt = document.createElement("option");
+                opt.value = f; opt.innerText = f;
+                folderSelect.appendChild(opt);
+            });
+        }
+
+        document.getElementById("create-folder-btn").addEventListener("click", () => {
+            const folderName = prompt("Enter new directory name:");
+            if (folderName && !folders.includes(folderName)) {
+                folders.push(folderName.trim());
+                localStorage.setItem("portal_folders", JSON.stringify(folders));
+                initFolders();
+                loadGameLibrary();
+            }
+        });
+
+        function toggleFolder(folderId) {
+            const content = document.getElementById("folder-content-" + folderId);
+            content.classList.toggle("open");
+        }
+
+        // --- DATABASE & LIBRARY ---
+        let db;
+        const dbRequest = indexedDB.open("TerminalGamesDB", 2);
+        dbRequest.onupgradeneeded = e => { db = e.target.result; if (!db.objectStoreNames.contains("swfs")) db.createObjectStore("swfs", { keyPath: "name" }); };
+        dbRequest.onsuccess = e => db = e.target.result;
+
+        function loadGameLibrary() {
+            if (!db) return;
+            db.transaction(["swfs"], "readonly").objectStore("swfs").getAll().onsuccess = e => {
+                const list = document.getElementById("game-list"); list.innerHTML = ""; 
+                const games = e.target.result;
+
+                const groupedGames = {};
+                folders.forEach(f => groupedGames[f] = []); 
+                
+                games.forEach(game => {
+                    const folder = game.folder || "Unsorted";
+                    if (!groupedGames[folder]) groupedGames[folder] = [];
+                    groupedGames[folder].push(game);
+                });
+
+                Object.keys(groupedGames).forEach((folderName, index) => {
+                    const header = document.createElement("div");
+                    header.className = "folder-header";
+                    header.innerText = `📁 ${folderName} [${groupedGames[folderName].length}]`;
+                    header.onclick = () => toggleFolder(index);
+                    list.appendChild(header);
+
+                    const content = document.createElement("div");
+                    content.className = "folder-content";
+                    content.id = "folder-content-" + index;
+
+                    if (groupedGames[folderName].length === 0) {
+                        content.innerHTML = "<div style='color: #555; padding: 10px;'>Empty</div>";
+                    } else {
+                        groupedGames[folderName].forEach(game => {
+                            const div = document.createElement("div"); div.className = "game-item";
+                            div.innerHTML = `<span>> ${game.name}</span>`;
+                            const btnDiv = document.createElement("div");
+                            
+                            const playBtn = document.createElement("button"); playBtn.className = "custom-btn"; playBtn.innerText = "PLAY"; playBtn.onclick = () => launchGame(game.name, game.data);
+                            const delBtn = document.createElement("button"); delBtn.className = "custom-btn delete-btn"; delBtn.innerText = "DEL"; delBtn.onclick = () => { db.transaction(["swfs"], "readwrite").objectStore("swfs").delete(game.name).onsuccess = loadGameLibrary; };
+                            
+                            btnDiv.appendChild(playBtn); btnDiv.appendChild(delBtn); div.appendChild(btnDiv); content.appendChild(div);
+                        });
+                    }
+                    list.appendChild(content);
+                });
+            };
+        }
+
+        // Single File Upload (Accepts SWF, HTML, and GBA)
+        document.getElementById("game-upload").addEventListener("change", e => {
+            const file = e.target.files[0];
+            const targetFolder = folderSelect.value;
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = ev => {
+                    db.transaction(["swfs"], "readwrite").objectStore("swfs").put({ 
+                        name: file.name, 
+                        data: ev.target.result,
+                        folder: targetFolder
+                    }).onsuccess = () => { e.target.value = ""; loadGameLibrary(); };
+                };
+                reader.readAsArrayBuffer(file);
+            }
+        });
+
+        // Bulk Folder Upload (Accepts SWF, HTML, and GBA)
+        document.getElementById("folder-upload").addEventListener("change", e => {
+            const files = e.target.files;
+            if (files.length === 0) return;
+
+            const targetFolder = folderSelect.value;
+            let addedCount = 0;
+            const tx = db.transaction(["swfs"], "readwrite");
+            const store = tx.objectStore("swfs");
+
+            for (let i = 0; i < files.length; i++) {
+                const file = files[i];
+                let name = file.name.toLowerCase();
+                if (name.endsWith(".swf") || name.endsWith(".html") || name.endsWith(".gba")) {
+                    const reader = new FileReader();
+                    reader.onload = ev => { store.put({ name: file.name, data: ev.target.result, folder: targetFolder }); };
+                    reader.readAsArrayBuffer(file);
+                    addedCount++;
+                }
+            }
+
+            tx.oncomplete = () => {
+                e.target.value = ""; 
+                loadGameLibrary();
+                if (addedCount > 0) alert("Successfully installed " + addedCount + " games into [" + targetFolder + "]!");
+            };
+        });
+
+        // Export Backup
+        document.getElementById("export-btn").addEventListener("click", () => {
+            db.transaction(["swfs"], "readonly").objectStore("swfs").getAll().onsuccess = e => {
+                const masterBackup = {
+                    games: e.target.result,
+                    localData: { ...localStorage } 
+                };
+                const data = JSON.stringify(masterBackup);
+                const blob = new Blob([data], {type: 'application/json'});
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url; a.download = 'portal_master_backup.json';
+                a.click(); 
+                URL.revokeObjectURL(url);
+            };
+        });
+
+        // IMPORT BACKUP LOGIC
+        document.getElementById("import-upload").addEventListener("change", e => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = ev => {
+                try {
+                    const importedBackup = JSON.parse(ev.target.result);
+                    let importedGames = [];
+
+                    if (Array.isArray(importedBackup)) {
+                        importedGames = importedBackup; 
+                    } else if (importedBackup.games) {
+                        importedGames = importedBackup.games; 
+                        if (importedBackup.localData) {
+                            for (let key in importedBackup.localData) {
+                                localStorage.setItem(key, importedBackup.localData[key]);
+                            }
+                        }
+                    }
+
+                    const tx = db.transaction(["swfs"], "readwrite");
+                    const store = tx.objectStore("swfs");
+                    
+                    let importedCount = 0;
+                    importedGames.forEach(game => {
+                        store.put(game);
+                        importedCount++;
+                    });
+
+                    tx.oncomplete = () => {
+                        e.target.value = ""; 
+                        alert("Successfully restored " + importedCount + " games and all save data!");
+                        location.reload(); 
+                    };
+                } catch (error) {
+                    alert("Error: Invalid backup file.");
+                    console.error(error);
+                }
+            };
+            reader.readAsText(file);
+        });
+
+        document.getElementById("clear-db-btn").addEventListener("click", () => {
+            if(confirm("Format Drive? All games will be lost.")) { 
+                db.transaction(["swfs"], "readwrite").objectStore("swfs").clear().onsuccess = loadGameLibrary; 
+            }
+        });
+
+        // --- GAME EXECUTION (Triple Engine: Flash + HTML5 + GBA) ---
+        function launchGame(name, buffer) {
+            document.getElementById("library-view").style.display = "none"; 
+            document.getElementById("game-view").style.display = "flex";
+            const container = document.getElementById("game-container");
+            container.innerHTML = ""; 
+
+            let ext = name.toLowerCase().split('.').pop();
+
+            if (ext === "html") {
+                // Engine 1: HTML5 Native Web Games
+                const iframe = document.createElement("iframe");
+                iframe.src = URL.createObjectURL(new Blob([buffer], { type: "text/html" }));
+                iframe.style.width = "100%"; iframe.style.height = "100%";
+                iframe.style.border = "none"; iframe.style.backgroundColor = "#000";
+                container.appendChild(iframe);
+                
+            } else if (ext === "gba") {
+                // Engine 2: Game Boy Advance (EmulatorJS)
+                const iframe = document.createElement("iframe");
+                iframe.style.width = "100%"; iframe.style.height = "100%";
+                iframe.style.border = "none"; iframe.style.backgroundColor = "#000";
+                
+                // Convert the raw ArrayBuffer back into a URL that the emulator can read
+                const romUrl = URL.createObjectURL(new Blob([buffer]));
+                
+                // Inject the EmulatorJS core directly into the iFrame
+                iframe.srcdoc = `
+                    <!DOCTYPE html>
+                    <html>
+                    <head>
+                        <style>body, html { margin: 0; padding: 0; width: 100%; height: 100%; background: #000; overflow: hidden; }</style>
+                    </head>
+                    <body>
+                        <div style="width:100%;height:100%;max-width:100%">
+                            <div id="game"></div>
+                        </div>
+                        <script>
+                            window.EJS_player = '#game';
+                            window.EJS_core = 'gba';
+                            window.EJS_gameUrl = '${romUrl}';
+                            window.EJS_pathtodata = 'https://cdn.emulatorjs.org/stable/data/';
+                        <\/script>
+                        <script src="https://cdn.emulatorjs.org/stable/data/loader.js"><\/script>
+                    </body>
+                    </html>
+                `;
+                container.appendChild(iframe);
+
+            } else {
+                // Engine 3: Classic Flash Player (Ruffle)
+                const player = window.RufflePlayer.newest().createPlayer();
+                container.appendChild(player);
+                player.load({ 
+                    url: URL.createObjectURL(new Blob([buffer], { type: "application/x-shockwave-flash" })), 
+                    base: "https://secure.local/", 
+                    swfFileName: "https://secure.local/" + name 
+                });
+            }
+        }
+
+        document.getElementById("switch-game-btn").addEventListener("click", () => {
+            if (document.fullscreenElement) document.exitFullscreen();
+            document.getElementById("game-container").innerHTML = ""; document.getElementById("game-view").style.display = "none"; document.getElementById("library-view").style.display = "block";
+        });
+
+        document.getElementById("fullscreen-btn").addEventListener("click", () => {
+            const wrap = document.getElementById("game-wrapper");
+            if (!document.fullscreenElement) wrap.requestFullscreen(); else document.exitFullscreen();
+        });
+    </script>
+</body>
+</html>
