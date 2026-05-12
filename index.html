@@ -1,0 +1,1509 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Google Drive - My Drive</title>
+    <link rel="icon" type="image/png" href="https://ssl.gstatic.com/images/branding/product/1x/drive_2020q4_32dp.png">
+
+    <style>
+        :root {
+            --term-color: #00ff00;    
+            --term-bg: #050505;       
+            --panel-bg: #0a0a0a;      
+            --alert-color: #ff3333;   
+        }
+
+        body {
+            background-color: var(--term-bg); color: var(--term-color);
+            font-family: 'Courier New', Courier, monospace; margin: 0; min-height: 100vh;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            overflow: hidden; user-select: none; transition: filter 0.5s ease, transform 2s ease-in-out, opacity 1s ease, background-color 2s ease, color 2s ease;
+        }
+
+        #crt-overlay {
+            position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), 
+                        linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
+            background-size: 100% 2px, 3px 100%; pointer-events: none; z-index: 100;
+            transition: background 2s ease;
+        }
+
+        #boot-screen { display: flex; flex-direction: column; width: 80vw; height: 80vh; font-size: 18px; z-index: 60; }
+        #lock-screen { display: none; flex-direction: column; align-items: center; text-align: center; z-index: 50; }
+        #lock-screen h1 { letter-spacing: 5px; text-shadow: 0 0 10px var(--term-color); text-transform: uppercase; }
+        #passcode-input {
+            background: #111; border: 1px solid var(--term-color); color: var(--term-color);
+            padding: 15px; font-size: 20px; text-align: center; letter-spacing: 5px; outline: none; margin-top: 20px; width: 250px; text-transform: lowercase;
+        }
+
+        #status-bar {
+            position: absolute; top: 0; left: 0; width: 100%; padding: 10px 20px; box-sizing: border-box;
+            display: none; justify-content: space-between; border-bottom: 1px solid var(--term-color); background: rgba(0,0,0,0.8); z-index: 40;
+        }
+        .bar-btn { background: none; border: 1px solid var(--term-color); color: var(--term-color); cursor: pointer; margin-left: 5px; font-family: inherit; }
+        .bar-btn:hover { background: var(--term-color); color: #000; }
+
+        #main-ui { display: none; width: 100%; height: 100vh; flex-direction: column; align-items: center; justify-content: center; margin-top: 20px; }
+        #library-view {
+            width: 80vw; max-width: 800px; background: var(--panel-bg); border: 1px solid var(--term-color);
+            padding: 20px; box-shadow: 0 0 20px rgba(0, 255, 0, 0.05); text-align: center; position: relative;
+        }
+
+        #game-list { margin: 20px 0; max-height: 250px; overflow-y: auto; text-align: left; }
+        .folder-header {
+            background: #111; border: 1px solid var(--term-color); padding: 10px; margin-top: 10px;
+            cursor: pointer; font-weight: bold; text-transform: uppercase;
+        }
+        .folder-header:hover { background: #222; }
+        .folder-content { display: none; padding-left: 20px; border-left: 1px dashed var(--term-color); margin-bottom: 10px; }
+        .folder-content.open { display: block; }
+        
+        .game-item { display: flex; justify-content: space-between; align-items: center; padding: 10px; border: 1px solid #333; margin-top: 5px; background: #050505; }
+        select { background: #111; color: var(--term-color); border: 1px solid var(--term-color); padding: 5px; font-family: inherit; outline: none; }
+
+        /* NOTES UI */
+        #notes-container { display: none; margin-top: 15px; text-align: left; border-top: 1px dashed var(--term-color); padding-top: 15px; }
+        #notes-area {
+            width: 100%; height: 100px; background: #050505; color: var(--term-color); border: 1px solid var(--term-color);
+            padding: 10px; font-family: 'Courier New', Courier, monospace; box-sizing: border-box; resize: vertical; outline: none;
+        }
+
+        #game-view { display: none; width: 100%; flex-direction: column; align-items: center; }
+        #game-wrapper { position: relative; width: 95vw; max-width: 1400px; height: 80vh; background-color: #000; border: 2px solid #333; display: flex; justify-content: center; align-items: center; }
+        #game-container, ruffle-player { width: 100%; height: 100%; }
+
+        input[type="file"] { display: none; }
+        .custom-btn {
+            padding: 10px 20px; font-size: 14px; font-family: inherit; font-weight: bold; background-color: var(--panel-bg);
+            color: var(--term-color); border: 1px solid var(--term-color); cursor: pointer; text-transform: uppercase; margin: 5px;
+        }
+        .custom-btn:hover { background-color: var(--term-color); color: #000; }
+        .delete-btn { border-color: var(--alert-color); color: var(--alert-color); }
+        .delete-btn:hover { background-color: var(--alert-color); color: #000; }
+
+        @keyframes glitch {
+            0%   { transform: translate(0); filter: none; }
+            10%  { transform: translate(-3px, 1px); filter: hue-rotate(90deg); }
+            20%  { transform: translate(3px, -1px); filter: hue-rotate(180deg); }
+            30%  { transform: translate(-2px, 2px); filter: brightness(2); }
+            40%  { transform: translate(2px, -2px); filter: invert(1); }
+            50%  { transform: translate(-1px, 1px); filter: saturate(5); }
+            60%  { transform: translate(1px, -1px); filter: hue-rotate(270deg); }
+            70%  { transform: translate(-3px, 0); filter: contrast(3); }
+            80%  { transform: translate(3px, 1px); filter: hue-rotate(360deg); }
+            90%  { transform: translate(0, -1px); filter: brightness(0.5); }
+            100% { transform: translate(0); filter: none; }
+        }
+        .glitching { animation: glitch 0.15s infinite; }
+
+        @keyframes eyePulse {
+            0%, 100% { opacity: 0.12; transform: scale(1); }
+            50% { opacity: 0.55; transform: scale(1.4); }
+        }
+        #hidden-eye {
+            position: absolute; bottom: 8px; right: 12px; font-size: 12px;
+            opacity: 0.12; cursor: pointer; user-select: none;
+            animation: eyePulse 5s ease-in-out infinite;
+            transition: opacity 0.3s;
+        }
+        #hidden-eye:hover { opacity: 0.9; }
+
+        #mini-terminal { display: none; margin-top: 15px; border-top: 1px dashed var(--term-color); padding-top: 15px; text-align: left; }
+        #terminal-output { height: 120px; overflow-y: auto; font-size: 13px; background: #000; border: 1px solid #333; padding: 8px; margin-bottom: 6px; color: #aaa; }
+        #terminal-output .t-line { margin: 2px 0; }
+        #terminal-output .t-cmd { color: var(--term-color); }
+        #terminal-output .t-err { color: var(--alert-color); }
+        #terminal-input-row { display: flex; align-items: center; gap: 6px; }
+        #terminal-input { flex: 1; background: #000; color: var(--term-color); border: none; border-bottom: 1px solid var(--term-color); font-family: inherit; font-size: 13px; outline: none; padding: 4px; }
+
+        #ctx-menu { display: none; position: fixed; background: #0a0a0a; border: 1px solid var(--term-color); z-index: 9999; min-width: 160px; font-size: 13px; }
+        .ctx-item { padding: 8px 14px; cursor: pointer; border-bottom: 1px solid #1a1a1a; }
+        .ctx-item:last-child { border-bottom: none; }
+        .ctx-item:hover { background: var(--term-color); color: #000; }
+
+        /* AI CHAT */
+        #ai-chat-panel {
+            display: none; position: fixed; bottom: 0; right: 0;
+            width: 340px; height: 480px; background: #050505;
+            border: 1px solid var(--term-color); border-bottom: none; border-right: none;
+            z-index: 500; flex-direction: column;
+            box-shadow: -4px -4px 30px rgba(0,255,0,0.08);
+        }
+        #ai-chat-header {
+            padding: 8px 12px; border-bottom: 1px solid var(--term-color);
+            font-size: 12px; letter-spacing: 3px; display: flex;
+            justify-content: space-between; align-items: center;
+            background: #0a0a0a;
+        }
+        #ai-chat-header span { color: var(--term-color); }
+        #ai-status-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--term-color); display: inline-block; margin-right: 6px; animation: eyePulse 2s ease-in-out infinite; }
+        #ai-messages {
+            flex: 1; overflow-y: auto; padding: 10px; font-size: 13px;
+            display: flex; flex-direction: column; gap: 8px;
+        }
+        .ai-msg { padding: 7px 10px; border-radius: 2px; max-width: 90%; line-height: 1.5; word-break: break-word; }
+        .ai-msg.nexus { background: #0a1a0a; border-left: 2px solid var(--term-color); color: var(--term-color); align-self: flex-start; }
+        .ai-msg.user  { background: #111; border-right: 2px solid #555; color: #aaa; align-self: flex-end; text-align: right; }
+        .ai-msg.system { color: #444; font-size: 11px; align-self: center; letter-spacing: 1px; }
+        .ai-typing { color: #333; font-size: 20px; letter-spacing: 4px; padding: 6px 10px; }
+        #ai-input-row { display: flex; border-top: 1px solid var(--term-color); }
+        #ai-input {
+            flex: 1; background: #000; color: var(--term-color); border: none;
+            padding: 10px; font-family: inherit; font-size: 13px; outline: none;
+        }
+        #ai-send-btn {
+            background: none; border: none; border-left: 1px solid var(--term-color);
+            color: var(--term-color); padding: 10px 14px; cursor: pointer; font-size: 16px;
+        }
+        #ai-send-btn:hover { background: var(--term-color); color: #000; }
+    </style>
+</head>
+<body>
+
+    <div id="crt-overlay"></div>
+    <div id="boot-screen"></div>
+
+    <div id="status-bar">
+        <div id="sys-clock">TIME: 00:00:00</div>
+        <div>
+            <button id="toggle-notes-btn" class="bar-btn">📝 NOTES</button>
+            <button id="toggle-term-btn" class="bar-btn">⌨ SHELL</button>
+            <button id="toggle-ai-btn" class="bar-btn">🤖 N.E.X.U.S.</button>
+            <button id="toggle-crt-btn" class="bar-btn">📺 CRT: ON</button>
+            <button id="glitch-btn" class="bar-btn">⚡ GLITCH</button>
+            <button onclick="setTheme('#00ff00')" class="bar-btn">GRN</button>
+            <button onclick="setTheme('#ffb000')" class="bar-btn">AMB</button>
+            <button onclick="setTheme('#00ffff')" class="bar-btn">CYN</button>
+            <button onclick="setTheme('#ff3333')" class="bar-btn">RED</button>
+            <button onclick="setTheme('#ff00ff')" class="bar-btn">PNK</button>
+        </div>
+    </div>
+
+    <div id="lock-screen">
+        <h1>OS Locked</h1>
+        <p>Enter developer credentials.</p>
+        <input type="password" id="passcode-input" placeholder="ID_REQ" autocomplete="off">
+    </div>
+
+    <div id="main-ui">
+        <div id="library-view">
+            <h2>LOCAL DIRECTORY</h2>
+
+            <!-- MUSIC PLAYER -->
+            <div style="margin-bottom: 20px; border: 1px solid var(--term-color); padding: 10px; background: var(--panel-bg); box-shadow: 0 0 10px rgba(0,255,0,0.05);">
+                <div style="font-size: 11px; letter-spacing: 3px; margin-bottom: 8px; color: var(--term-color); text-align: left;">▶ AUDIO FEED</div>
+                <iframe allow="autoplay *; encrypted-media *; fullscreen *; clipboard-write" frameborder="0" height="175" style="width:100%;overflow:hidden;border-radius:4px;" sandbox="allow-forms allow-popups allow-same-origin allow-scripts allow-storage-access-by-user-activation allow-top-navigation-by-user-activation" src="https://embed.music.apple.com/us/playlist/83-372-%2427-0ption-3/pl.u-8aAVZAaFvLk77Zm"></iframe>
+            </div>
+
+            <div style="text-align: center; margin-bottom: 20px;">
+                <a href="https://mesaredux.the-duck.co/games" target="_blank">
+                    <img src="https://mesaredux.com/assets/images/mesaredux.gif" alt="MESλREDUX: Unblocked Games for the masses!" style="border: 1px solid var(--term-color); max-width: 100%;">
+                </a>
+            </div>
+            
+            <div style="margin-bottom: 15px; text-align: left;">
+                <button id="create-folder-btn" class="custom-btn">+ New Directory</button>
+                <span>Upload to: </span>
+                <select id="upload-folder-select"></select>
+            </div>
+
+            <div id="game-list"></div>
+
+            <div id="notes-container">
+                <label style="font-weight: bold;">USER LOGS & CHEATS:</label>
+                <textarea id="notes-area" placeholder="Enter notes here..."></textarea>
+            </div>
+
+            <!-- MINI SHELL -->
+            <div id="mini-terminal">
+                <label style="font-weight: bold; font-size: 12px; letter-spacing: 2px;">⌨ SHELL v1.0</label>
+                <div id="terminal-output"></div>
+                <div id="terminal-input-row">
+                    <span style="color:var(--term-color);">root@portal:~$</span>
+                    <input type="text" id="terminal-input" autocomplete="off" spellcheck="false" placeholder="type 'help'">
+                </div>
+            </div>
+            
+            <div style="margin-top: 20px; border-top: 1px dashed var(--term-color); padding-top: 20px; position: relative;">
+                <label for="game-upload" class="custom-btn">Install 1 Game</label>
+                <input type="file" id="game-upload" accept=".swf, .html, .gba">
+
+                <label for="folder-upload" class="custom-btn">Bulk Install</label>
+                <input type="file" id="folder-upload" webkitdirectory multiple>
+                
+                <button id="export-btn" class="custom-btn" style="border-style: dashed;">Export Backup</button>
+                
+                <label for="import-upload" class="custom-btn" style="border-style: dashed; color: #00ffff; border-color: #00ffff;">Import Backup</label>
+                <input type="file" id="import-upload" accept=".json">
+
+                <button id="clear-db-btn" class="custom-btn delete-btn" style="float: right;">Format Drive</button>
+
+                <!-- HIDDEN EYE EASTER EGG -->
+                <span id="hidden-eye" title="">👁</span>
+            </div>
+            <div style="margin-top: 15px; font-size: 12px; color: #777;">PANIC: PRESS [ESC] TO REDIRECT TO GOOGLE CLASSROOM</div>
+        </div>
+
+        <!-- CUSTOM CONTEXT MENU -->
+        <div id="ctx-menu">
+            <div class="ctx-item" onclick="setTheme('#00ff00'); hideCtx()">⬛ Set Theme: GREEN</div>
+            <div class="ctx-item" onclick="setTheme('#ffb000'); hideCtx()">⬛ Set Theme: AMBER</div>
+            <div class="ctx-item" onclick="setTheme('#00ffff'); hideCtx()">⬛ Set Theme: CYAN</div>
+            <div class="ctx-item" onclick="setTheme('#ff00ff'); hideCtx()">⬛ Set Theme: PINK</div>
+            <div class="ctx-item" onclick="document.getElementById('toggle-crt-btn').click(); hideCtx()">📺 Toggle CRT</div>
+            <div class="ctx-item" onclick="triggerGlitch(); hideCtx()">⚡ GLITCH</div>
+            <div class="ctx-item" style="color:var(--alert-color);" onclick="hideCtx()">✕ Close</div>
+        </div>
+
+        <div id="game-view">
+            <div id="game-wrapper"><div id="game-container"></div></div>
+            <div style="display: flex; justify-content: space-between; width: 95vw; max-width: 1400px; margin-top: 10px;">
+                <button id="switch-game-btn" class="custom-btn">Return to Menu</button>
+                <button id="fullscreen-btn" class="custom-btn" style="border-color: #fff; color: #fff;">[ ] Fullscreen</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        window.RufflePlayer = window.RufflePlayer || {};
+        window.RufflePlayer.config = { letterbox: "on", forceScale: true };
+    </script>
+    <script src="https://unpkg.com/@ruffle-rs/ruffle"></script>
+    
+    <script>
+        // --- AUDIO ENGINE (FALLOUT TERMINAL CLACK) ---
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        let audioCtx;
+        function playSound(type) {
+            if (!audioCtx) audioCtx = new AudioContext();
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            
+            const now = audioCtx.currentTime;
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            
+            osc.connect(gain); gain.connect(audioCtx.destination);
+            
+            if (type === 'type') {
+                osc.type = 'square'; 
+                osc.frequency.setValueAtTime(100, now);
+                osc.frequency.exponentialRampToValueAtTime(10, now + 0.05);
+                gain.gain.setValueAtTime(0.1, now); 
+                gain.gain.exponentialRampToValueAtTime(0.001, now + 0.05);
+                osc.start(now); osc.stop(now + 0.05);
+            }
+        }
+
+        document.addEventListener('click', () => playSound('type'));
+
+        // --- EASTER EGGS: KONAMI CODE ---
+        const konamiCode = ['ArrowUp', 'ArrowUp', 'ArrowDown', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'ArrowLeft', 'ArrowRight', 'b', 'a'];
+        let konamiIndex = 0;
+
+        document.addEventListener('keydown', (e) => { 
+            if(e.key !== 'Escape') playSound('type'); 
+            
+            if (e.key === konamiCode[konamiIndex]) {
+                konamiIndex++;
+                if (konamiIndex === konamiCode.length) {
+                    alert("OVERCLOCK MODE ACTIVATED.");
+                    document.body.style.filter = "sepia(1) saturate(5) hue-rotate(40deg)";
+                    setTheme('#fffb00'); // Gold
+                    konamiIndex = 0;
+                }
+            } else {
+                konamiIndex = 0;
+            }
+        });
+
+        // --- BOOT & LOGIN ---
+        const sysAuthToken = btoa("nexus"); // Password is 'nexus'
+        const passInput = document.getElementById("passcode-input");
+        const bootScreen = document.getElementById('boot-screen');
+        const lockScreen = document.getElementById('lock-screen');
+        
+        let bootStep = 0;
+        const allBootMsgs = [
+            "INITIALIZING KERNEL...", "MOUNTING DIRECTORIES...", "CHECKING AUDIO DRIVERS...",
+            "LOADING RUFFLE ENGINE...", "CALIBRATING CRT OVERLAY...", "SCANNING FOR THREATS...",
+            "DECRYPTING PARTITION TABLE...", "ALLOCATING MEMORY BUFFERS...", "WARMING UP CAPACITORS...",
+            "ESTABLISHING SECURE CHANNEL...", "VERIFYING CHECKSUMS...", "LOADING GAME DATABASE...",
+            "INJECTING NOSTALGIA...", "SYNCING WITH THE MAINFRAME...", "DEFRAGMENTING MEMORY...",
+        ];
+        // Pick 5 random boot messages + always end with SYSTEM READY
+        function shuffled(arr) { return [...arr].sort(() => Math.random() - 0.5); }
+        const bootMsgs = [...shuffled(allBootMsgs).slice(0, 4), "SYSTEM READY."];
+        
+        function runBootSequence() {
+            if (bootStep < bootMsgs.length) {
+                const p = document.createElement('div'); p.innerText = "> " + bootMsgs[bootStep];
+                bootScreen.appendChild(p); 
+                bootStep++; 
+                playSound('type'); 
+                let randomDelay = Math.floor(Math.random() * 800) + 400;
+                setTimeout(runBootSequence, randomDelay); 
+            } else { 
+                setTimeout(() => { bootScreen.style.display = "none"; lockScreen.style.display = "flex"; passInput.focus(); }, 800); 
+            }
+        }
+        window.onload = runBootSequence;
+
+        // --- FAILED LOGIN COUNTER ---
+        let failedAttempts = 0;
+        let loginLocked = false;
+
+        // LOGIN SYSTEM WITH EASTER EGGS
+        passInput.addEventListener("keypress", function(e) {
+            if (e.key === "Enter") {
+                if (loginLocked) { passInput.value = ""; return; }
+                const val = passInput.value.toLowerCase().trim();
+
+                // 1. Fake Crash Easter Egg
+                if (val === "system_override" || val === "delete" || val === "virus") {
+                    document.body.innerHTML = "<h1 style='color:red; text-align:center; margin-top:40vh; text-shadow: 0 0 20px red; font-size: 3rem;'>CRITICAL SYSTEM FAILURE:<br>Vault Breached.</h1>";
+                    playSound('type');
+                    setTimeout(() => { location.reload(); }, 3500);
+                    return;
+                }
+
+                // 2. Creator Easter Egg
+                if (val === "sergio") {
+                    alert("Welcome back, Creator. Bypassing security...");
+                    unlockSystem(true);
+                    return;
+                }
+
+                // 3. Barrel Roll Easter Egg
+                if (val === "barrel roll" || val === "do a barrel roll") {
+                    document.body.style.transform = "rotate(360deg)";
+                    setTimeout(() => { document.body.style.transform = "none"; }, 2000);
+                    passInput.value = "";
+                    return;
+                }
+
+                // 4. Matrix Easter Egg
+                if (val === "matrix" || val === "neo") {
+                    alert("Wake up, Neo...");
+                    setTheme('#00ff41'); // Bright matrix green
+                    document.body.style.textShadow = "0 0 5px #00ff41";
+                    passInput.value = "";
+                    return;
+                }
+
+                // 5. Ghost / Stealth Easter Egg
+                if (val === "ghost" || val === "stealth") {
+                    alert("Stealth Mode Activated. Going dark.");
+                    document.body.style.opacity = "0.3";
+                    passInput.value = "";
+                    return;
+                }
+
+                // 6. Guest Easter Egg
+                if (val === "guest") {
+                    alert("Access restricted. Limited permissions granted.");
+                    unlockSystem();
+                    return;
+                }
+
+                // 7. HAL 9000 Easter Egg
+                if (val === "hal" || val === "hal 9000") {
+                    alert("I'm sorry, Dave. I'm afraid I can't do that.");
+                    passInput.style.borderColor = "var(--alert-color)"; 
+                    passInput.value = "";
+                    setTimeout(() => passInput.style.borderColor = "var(--term-color)", 500);
+                    return;
+                }
+
+                // 8. Diamond Eye Easter Egg — NEW animated version
+                if (val === "eye") {
+                    passInput.disabled = true;
+                    lockScreen.innerHTML = "";
+                    lockScreen.style.display = "flex";
+                    lockScreen.style.flexDirection = "column";
+                    lockScreen.style.alignItems = "center";
+
+                    const eyeFrames = [
+`   /\\   
+  /  \\  
+ /    \\ 
+ \\    / 
+  \\  /  
+   \\/   `,
+`   /\\   
+  / -- \\ 
+ / ----\\ 
+ \\----/ 
+  \\--/  
+   \\/   `,
+`   /\\   
+  / () \\ 
+ / (👁️)\\ 
+ \\(👁️)/ 
+  \\ () /  
+   \\/   `,
+`   /\\   
+  /◈◈◈\\ 
+ /◈◈👁️◈\\ 
+ \\◈👁️◈◈/ 
+  \\◈◈◈/  
+   \\/   `,
+`   /\\   
+  / 👁️ \\ 
+ / 👁️👁️ \\ 
+ \\ 👁️👁️ / 
+  \\ 👁️ /  
+   \\/   `
+                    ];
+
+                    const pre = document.createElement("pre");
+                    pre.style.cssText = "font-family:monospace; font-size:1.6rem; text-shadow: 0 0 20px #00ffff; color:#00ffff; transition: all 0.3s;";
+                    pre.innerText = eyeFrames[0];
+
+                    const msg = document.createElement("h2");
+                    msg.style.cssText = "letter-spacing:6px; color:#00ffff; text-shadow: 0 0 15px #00ffff; margin-top:10px; font-size:1rem;";
+                    msg.innerText = "INITIALIZING...";
+
+                    lockScreen.appendChild(pre);
+                    lockScreen.appendChild(msg);
+                    setTheme('#00ffff');
+
+                    const msgs = ["AWAKENING...", "THE EYE OPENS.", "IT SEES ALL.", "IT SEES YOU.", "THE DIAMOND EYE OBSERVES."];
+                    let fi = 0;
+                    const eyeAnim = setInterval(() => {
+                        fi++;
+                        if (fi < eyeFrames.length) {
+                            pre.innerText = eyeFrames[fi];
+                            if (fi < msgs.length) msg.innerText = msgs[fi];
+                        } else {
+                            clearInterval(eyeAnim);
+                            setTimeout(() => { location.reload(); }, 2000);
+                        }
+                    }, 600);
+                    return;
+                }
+
+                // 9. SUDO Easter Egg
+                if (val === "sudo" || val === "sudo su") {
+                    alert("sudo: command not allowed\nYou are not in the sudoers file. This incident will be reported.");
+                    passInput.style.borderColor = "var(--alert-color)"; passInput.value = "";
+                    setTimeout(() => passInput.style.borderColor = "var(--term-color)", 500);
+                    return;
+                }
+
+                // 10. 42 - Hitchhiker's Guide
+                if (val === "42") {
+                    document.body.innerHTML = "<div style='color:#00ff00; text-align:center; margin-top:25vh; font-family: monospace; font-size: 1.5rem; text-shadow: 0 0 15px #00ff00;'><h1 style='font-size:4rem;'>42</h1><p>THE ANSWER TO LIFE, THE UNIVERSE, AND EVERYTHING.</p><p style='color:#555; font-size:0.9rem; margin-top:40px;'>Rebooting in 4 seconds...</p></div>";
+                    setTimeout(() => { location.reload(); }, 4000);
+                    return;
+                }
+
+                // 11. Please - Good Manners Bypass
+                if (val === "please") {
+                    alert("ACCESS GRANTED.\n\n...Good manners detected. Bypassing security protocol.");
+                    unlockSystem();
+                    return;
+                }
+
+                // 12. Flip Easter Egg
+                if (val === "flip") {
+                    const isFlipped = document.body.style.transform === "rotate(180deg)";
+                    document.body.style.transform = isFlipped ? "none" : "rotate(180deg)";
+                    document.body.style.transition = "transform 1s ease";
+                    passInput.value = "";
+                    return;
+                }
+
+                // 13. Nuke Easter Egg
+                if (val === "nuke" || val === "launch") {
+                    passInput.disabled = true;
+                    const nukeLines = [
+                        "> NUCLEAR LAUNCH SEQUENCE INITIATED...",
+                        "> ACQUIRING TARGET COORDINATES...",
+                        "> ARMING WARHEADS...",
+                        "> LAUNCH CODE VERIFIED: ██████",
+                        "> MISSILES IN FLIGHT.",
+                        "> ...",
+                        "> JUST KIDDING. REBOOTING."
+                    ];
+                    lockScreen.innerHTML = "";
+                    let i = 0;
+                    const nukeInterval = setInterval(() => {
+                        if (i < nukeLines.length) {
+                            const p = document.createElement("div");
+                            p.innerText = nukeLines[i];
+                            p.style.cssText = "color: var(--alert-color); font-family: monospace; font-size: 18px; margin: 8px 0; text-shadow: 0 0 10px red;";
+                            lockScreen.appendChild(p);
+                            i++;
+                        } else {
+                            clearInterval(nukeInterval);
+                            setTimeout(() => location.reload(), 1500);
+                        }
+                    }, 700);
+                    return;
+                }
+
+                // 14. WarGames Easter Egg
+                if (val === "joshua" || val === "wargames") {
+                    alert("GREETINGS PROFESSOR FALKEN.\n\nSHALL WE PLAY A GAME?");
+                    unlockSystem();
+                    return;
+                }
+
+                // 15. Order 66 Easter Egg
+                if (val === "order 66") {
+                    alert("Yes, my Lord.");
+                    document.body.style.backgroundColor = "#2a0000";
+                    setTheme('#ff0000'); // Blood red text
+                    document.getElementById("crt-overlay").style.background = "rgba(255,0,0,0.1)";
+                    passInput.value = "";
+                    return;
+                }
+
+                // 16. Noclip / Backrooms Easter Egg
+                if (val === "noclip" || val === "backrooms") {
+                    alert("You have noclipped out of reality...");
+                    document.body.style.backgroundColor = "#E6D78D"; // Backrooms yellow
+                    document.body.style.color = "#333";
+                    document.body.style.fontFamily = "Times New Roman, serif";
+                    document.getElementById("lock-screen").innerHTML = "<h1 style='color:#333; text-shadow:none;'>Where are you?</h1>";
+                    passInput.style.display = "none";
+                    return;
+                }
+
+                // 17. Coffee Easter Egg
+                if (val === "coffee") {
+                    lockScreen.innerHTML = "";
+                    const coffeeLines = ["> BREWING...", "> HEATING ELEMENT ACTIVE...", "> CAFFEINE SYNTHESIZED.", "> System requires caffeine to boot.", "> Restarting with energy."];
+                    let ci = 0;
+                    const coffeeInterval = setInterval(() => {
+                        if (ci < coffeeLines.length) {
+                            const p = document.createElement("div");
+                            p.innerText = coffeeLines[ci];
+                            p.style.cssText = "color: #ffb000; font-family: monospace; font-size: 16px; margin: 6px 0;";
+                            lockScreen.appendChild(p);
+                            ci++;
+                        } else {
+                            clearInterval(coffeeInterval);
+                            setTimeout(() => location.reload(), 1200);
+                        }
+                    }, 600);
+                    return;
+                }
+
+                // 18. Password Easter Egg
+                if (val === "password" || val === "123456" || val === "qwerty") {
+                    alert("Nice try.\n\nThe password is not '" + val + "'.\n\n...or is it?");
+                    passInput.style.borderColor = "var(--alert-color)"; passInput.value = "";
+                    setTimeout(() => passInput.style.borderColor = "var(--term-color)", 500);
+                    return;
+                }
+
+                // 19. Root Easter Egg
+                if (val === "root" || val === "admin" || val === "administrator") {
+                    alert("Permission denied.\n\nNice try, though.");
+                    passInput.style.borderColor = "var(--alert-color)"; passInput.value = "";
+                    setTimeout(() => passInput.style.borderColor = "var(--term-color)", 500);
+                    return;
+                }
+
+                // 20. Hello Easter Egg
+                if (val === "hello" || val === "hi" || val === "hey") {
+                    alert("Hello, User.\n\nAuthentication is still required.");
+                    passInput.value = "";
+                    return;
+                }
+
+                // 21. Rick Easter Egg
+                if (val === "rick" || val === "rickroll" || val === "never gonna") {
+                    lockScreen.innerHTML = "<div style='font-family:monospace; font-size:1.1rem; line-height:2; text-align:center;'><p>Never gonna give you up,</p><p>Never gonna let you down,</p><p>Never gonna run around and</p><p style=\"color:var(--alert-color)\">DENY YOU ACCESS.</p></div>";
+                    setTimeout(() => location.reload(), 4000);
+                    return;
+                }
+
+                // 22. BSOD / Error Easter Egg
+                if (val === "error" || val === "crash" || val === "bsod") {
+                    document.body.style.background = "#0000AA";
+                    document.body.style.color = "#fff";
+                    document.getElementById("crt-overlay").style.display = "none";
+                    lockScreen.innerHTML = `
+                        <div style="max-width:500px; text-align:left; font-family:monospace;">
+                            <h2 style="color:#fff; text-shadow:none;">A problem has been detected and Portal OS has been shut down to prevent damage.</h2>
+                            <br>
+                            <p>IRQL_NOT_LESS_OR_EQUAL</p>
+                            <br>
+                            <p>If this is the first time you've seen this Stop error screen, restart your computer.</p>
+                            <br>
+                            <p>Technical information:</p>
+                            <p>*** STOP: 0x0000000A (0x00000000, 0x00000002, 0x00000001, 0x804E5672)</p>
+                            <br>
+                            <p style="color:#aaa; font-size:12px;">Collecting error data... <span id="bsod-pct">0</span>%</p>
+                        </div>`;
+                    let pct = 0;
+                    const bsodTimer = setInterval(() => {
+                        pct += Math.floor(Math.random() * 5) + 1;
+                        if (pct >= 100) { pct = 100; clearInterval(bsodTimer); setTimeout(() => location.reload(), 1000); }
+                        const el = document.getElementById("bsod-pct");
+                        if (el) el.innerText = pct;
+                    }, 150);
+                    return;
+                }
+
+                // 23. Help Easter Egg — show hints
+                if (val === "help") {
+                    alert("AVAILABLE CREDENTIALS:\n\n[HINT] Think like a developer.\n[HINT] The creator left a backdoor.\n[HINT] Be polite.\n[HINT] The answer to everything.\n[HINT] Greet the system.\n\nGood luck, User.");
+                    passInput.value = "";
+                    return;
+                }
+
+                // Standard Login
+                if (btoa(val) === sysAuthToken) {
+                    unlockSystem();
+                } else {
+                    failedAttempts++;
+                    passInput.style.borderColor = "var(--alert-color)"; passInput.value = "";
+                    setTimeout(() => passInput.style.borderColor = "var(--term-color)", 500);
+
+                    // 17. Lockout after 3 failed attempts
+                    if (failedAttempts >= 3) {
+                        loginLocked = true;
+                        passInput.disabled = true;
+                        let countdown = 10;
+                        const lockMsg = document.createElement("p");
+                        lockMsg.id = "lockout-msg";
+                        lockMsg.style.cssText = "color: var(--alert-color); font-size: 14px; margin-top: 10px; letter-spacing: 2px;";
+                        lockMsg.innerText = `LOCKOUT ACTIVE. RETRY IN ${countdown}s`;
+                        lockScreen.appendChild(lockMsg);
+                        const lockTimer = setInterval(() => {
+                            countdown--;
+                            if (countdown <= 0) {
+                                clearInterval(lockTimer);
+                                loginLocked = false;
+                                failedAttempts = 0;
+                                passInput.disabled = false;
+                                passInput.focus();
+                                lockMsg.remove();
+                            } else {
+                                lockMsg.innerText = `LOCKOUT ACTIVE. RETRY IN ${countdown}s`;
+                            }
+                        }, 1000);
+                    }
+                }
+            }
+        });
+
+        let creatorVerified = false;
+        function unlockSystem(isCreator = false) {
+            creatorVerified = isCreator;
+            lockScreen.style.display = "none"; document.getElementById("status-bar").style.display = "flex";
+            document.getElementById("main-ui").style.display = "flex"; document.getElementById("library-view").style.display = "block";
+            passInput.value = ""; initFolders(); loadGameLibrary(); 
+        }
+
+        // PANIC BUTTON
+        document.addEventListener("keydown", function(e) {
+            if (e.key === "Escape") window.location.replace("https://classroom.google.com");
+        });
+
+        function setTheme(c) { document.documentElement.style.setProperty('--term-color', c); }
+        setInterval(() => { document.getElementById("sys-clock").innerText = "TIME: " + new Date().toLocaleTimeString('en-US', { hour12: true }); }, 1000);
+
+        // --- GLITCH BUTTON ---
+        function triggerGlitch() {
+            const target = document.getElementById("library-view") || document.body;
+            target.classList.add("glitching");
+            setTimeout(() => target.classList.remove("glitching"), 800);
+        }
+        document.getElementById("glitch-btn").addEventListener("click", triggerGlitch);
+
+        // --- MINI SHELL TOGGLE ---
+        document.getElementById("toggle-term-btn").addEventListener("click", () => {
+            const mt = document.getElementById("mini-terminal");
+            const isOpen = mt.style.display === "block";
+            mt.style.display = isOpen ? "none" : "block";
+            if (!isOpen) {
+                document.getElementById("terminal-input").focus();
+                termPrint("Portal Shell v1.0 — type 'help' for commands.", "t-cmd");
+            }
+        });
+
+        // --- MINI SHELL LOGIC ---
+        const shellHistory = [];
+        let shellHistIdx = -1;
+        const termInput = document.getElementById("terminal-input");
+
+        function termPrint(text, cls) {
+            const out = document.getElementById("terminal-output");
+            const line = document.createElement("div");
+            line.className = "t-line " + (cls || "");
+            line.innerText = text;
+            out.appendChild(line);
+            out.scrollTop = out.scrollHeight;
+        }
+
+        const shellCmds = {
+            help: () => {
+                termPrint("Available commands:", "t-cmd");
+                ["ls","cat readme.txt","whoami","date","clear","ping","uname","uptime","echo <text>","sudo rm -rf /","exit"].forEach(c => termPrint("  " + c));
+            },
+            ls: () => {
+                termPrint("drwxr-xr-x  games/", "t-cmd");
+                termPrint("drwxr-xr-x  saves/");
+                termPrint("-rw-r--r--  readme.txt");
+                termPrint("-rw-------  .secrets  [PERMISSION DENIED]", "t-err");
+            },
+            whoami: () => termPrint("guest@portal — clearance level: BASIC", "t-cmd"),
+            date: () => termPrint(new Date().toString(), "t-cmd"),
+            uname: () => termPrint("PortalOS 3.7.2-LTS x86_64 GNU/Linux", "t-cmd"),
+            uptime: () => termPrint("up " + Math.floor(performance.now()/60000) + " min,  1 user,  load avg: 0.01 0.00 0.00", "t-cmd"),
+            ping: () => {
+                termPrint("PING google.com: 64 bytes, time=12ms", "t-cmd");
+                termPrint("PING google.com: 64 bytes, time=11ms");
+                termPrint("--- 2 packets transmitted, 2 received, 0% packet loss");
+            },
+            clear: () => { document.getElementById("terminal-output").innerHTML = ""; },
+            exit: () => { document.getElementById("mini-terminal").style.display = "none"; },
+            "cat readme.txt": () => {
+                termPrint("=== PORTAL OS README ===", "t-cmd");
+                termPrint("Welcome, User. This system manages your local game library.");
+                termPrint("Supported formats: .swf .html .gba");
+                termPrint("Panic key: [ESC] — redirects to Google Classroom.");
+                termPrint("If you found the shell, you're already too deep in.");
+            },
+            "sudo rm -rf /": () => {
+                termPrint("sudo: You are not in the sudoers file.", "t-err");
+                termPrint("This incident has been reported.", "t-err");
+            },
+        };
+
+        termInput.addEventListener("keydown", (e) => {
+            if (e.key === "Enter") {
+                const raw = termInput.value.trim();
+                if (!raw) return;
+                shellHistory.unshift(raw);
+                shellHistIdx = -1;
+                termPrint("root@portal:~$ " + raw, "t-cmd");
+                const cmd = raw.toLowerCase();
+                if (shellCmds[cmd]) {
+                    shellCmds[cmd]();
+                } else if (cmd.startsWith("echo ")) {
+                    termPrint(raw.slice(5));
+                } else if (cmd === "sudo" || cmd.startsWith("sudo ")) {
+                    termPrint("sudo: you are not in the sudoers file. This incident will be reported.", "t-err");
+                } else if (cmd === "idkfa") {
+                    termPrint("IDKFA — ALL WEAPONS GRANTED.", "t-cmd");
+                    termPrint("(you now have: BFG9000, chainsaw, plasma rifle, rocket launcher)");
+                    triggerGlitch();
+                } else {
+                    termPrint("bash: " + raw + ": command not found", "t-err");
+                }
+                termInput.value = "";
+            } else if (e.key === "ArrowUp") {
+                shellHistIdx = Math.min(shellHistIdx + 1, shellHistory.length - 1);
+                termInput.value = shellHistory[shellHistIdx] || "";
+                e.preventDefault();
+            } else if (e.key === "ArrowDown") {
+                shellHistIdx = Math.max(shellHistIdx - 1, -1);
+                termInput.value = shellHistIdx < 0 ? "" : shellHistory[shellHistIdx];
+                e.preventDefault();
+            }
+        });
+
+        // --- HIDDEN EYE EASTER EGG (click 13 times) ---
+        let eyeClickCount = 0;
+        document.getElementById("hidden-eye").addEventListener("click", (e) => {
+            e.stopPropagation();
+            eyeClickCount++;
+            const eye = document.getElementById("hidden-eye");
+            eye.style.opacity = Math.min(0.15 + eyeClickCount * 0.07, 1);
+            eye.style.fontSize = (12 + eyeClickCount * 2) + "px";
+            if (eyeClickCount >= 13) {
+                eyeClickCount = 0;
+                // Full-screen eye takeover
+                const overlay = document.createElement("div");
+                overlay.style.cssText = "position:fixed;top:0;left:0;width:100vw;height:100vh;background:#000;z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;";
+                const eyeArt = [
+`━━━━━━━━━━━━━━━━━━━━━━━
+    ╔═══════════╗
+    ║  👁  👁  ║
+    ║     ◉     ║
+    ╚═══════════╝
+━━━━━━━━━━━━━━━━━━━━━━━`,
+`━━━━━━━━━━━━━━━━━━━━━━━
+    ╔═══════════╗
+    ║  ◉     ◉  ║
+    ║    👁️    ║
+    ╚═══════════╝
+━━━━━━━━━━━━━━━━━━━━━━━`,
+`━━━━━━━━━━━━━━━━━━━━━━━
+    ╔═══════════╗
+    ║           ║
+    ║     👁️    ║
+    ╚═══════════╝
+━━━━━━━━━━━━━━━━━━━━━━━`
+                ];
+                const pre = document.createElement("pre");
+                pre.style.cssText = "color:#00ffff;text-shadow:0 0 30px #00ffff,0 0 60px #00ffff;font-size:clamp(12px,2vw,22px);text-align:center;line-height:1.5;";
+                pre.innerText = eyeArt[0];
+                const txt = document.createElement("p");
+                txt.style.cssText = "color:#00ffff;letter-spacing:8px;font-size:1.2rem;margin-top:20px;text-shadow:0 0 15px #00ffff;animation:eyePulse 1s ease-in-out infinite;";
+                txt.innerText = "THE EYE HAS ALWAYS BEEN WATCHING.";
+                const sub = document.createElement("p");
+                sub.style.cssText = "color:#333;font-size:11px;letter-spacing:3px;margin-top:30px;";
+                sub.innerText = "CLICK TO CLOSE";
+                overlay.appendChild(pre); overlay.appendChild(txt); overlay.appendChild(sub);
+                document.body.appendChild(overlay);
+                setTheme('#00ffff');
+                let fi = 0;
+                const eyeAnimInterval = setInterval(() => {
+                    fi = (fi + 1) % eyeArt.length;
+                    pre.innerText = eyeArt[fi];
+                }, 700);
+                overlay.addEventListener("click", () => {
+                    clearInterval(eyeAnimInterval);
+                    overlay.remove();
+                    setTheme('#00ff00');
+                    eye.style.opacity = "0.12";
+                    eye.style.fontSize = "12px";
+                });
+            }
+        });
+
+        // --- CUSTOM RIGHT-CLICK CONTEXT MENU ---
+        const ctxMenu = document.getElementById("ctx-menu");
+        function hideCtx() { ctxMenu.style.display = "none"; }
+        document.addEventListener("contextmenu", (e) => {
+            if (document.getElementById("main-ui").style.display !== "flex") return;
+            e.preventDefault();
+            ctxMenu.style.display = "block";
+            ctxMenu.style.left = Math.min(e.clientX, window.innerWidth - 170) + "px";
+            ctxMenu.style.top = Math.min(e.clientY, window.innerHeight - 220) + "px";
+        });
+        document.addEventListener("click", hideCtx);
+
+        // --- EASTER EGG: IDKFA typed in main UI ---
+        let idkfaBuffer = "";
+        document.addEventListener("keydown", (eKey) => {
+            if (document.getElementById("main-ui").style.display !== "flex") return;
+            if (document.activeElement === termInput) return;
+            idkfaBuffer += eKey.key.toLowerCase();
+            if (idkfaBuffer.length > 5) idkfaBuffer = idkfaBuffer.slice(-5);
+            if (idkfaBuffer === "idkfa") {
+                idkfaBuffer = "";
+                alert("IDKFA — WEAPONS GRANTED.\n\nYou now have: BFG9000 | Chainsaw | Plasma Rifle | Rocket Launcher");
+                triggerGlitch();
+            }
+        });
+
+        // --- EASTER EGG 18: IDDQD God Mode (type anywhere in main UI) ---
+        let iddqdBuffer = "";
+        let godModeActive = false;
+        document.addEventListener("keydown", (e) => {
+            if (document.getElementById("main-ui").style.display !== "flex") return;
+            iddqdBuffer += e.key.toLowerCase();
+            if (iddqdBuffer.length > 5) iddqdBuffer = iddqdBuffer.slice(-5);
+            if (iddqdBuffer === "iddqd") {
+                iddqdBuffer = "";
+                godModeActive = !godModeActive;
+                if (godModeActive) {
+                    alert("IDDQD — GOD MODE ACTIVATED. YOU ARE INVINCIBLE.");
+                    let hue = 0;
+                    window._godInterval = setInterval(() => {
+                        hue = (hue + 2) % 360;
+                        document.documentElement.style.setProperty('--term-color', `hsl(${hue}, 100%, 55%)`);
+                    }, 30);
+                } else {
+                    clearInterval(window._godInterval);
+                    alert("God Mode deactivated. You are mortal again.");
+                    setTheme('#00ff00');
+                }
+            }
+        });
+
+        // --- EASTER EGG 19: Click the clock 7 times ---
+        let clockClickCount = 0;
+        let clockClickTimer = null;
+        document.getElementById("sys-clock").style.cursor = "pointer";
+        document.getElementById("sys-clock").addEventListener("click", () => {
+            clockClickCount++;
+            clearTimeout(clockClickTimer);
+            clockClickTimer = setTimeout(() => { clockClickCount = 0; }, 2000);
+            if (clockClickCount >= 7) {
+                clockClickCount = 0;
+                document.getElementById("sys-clock").innerText = "TIME: IT'S ALWAYS GAME TIME";
+                setTimeout(() => {
+                    document.getElementById("sys-clock").innerText = "TIME: " + new Date().toLocaleTimeString('en-US', { hour12: true });
+                }, 4000);
+            }
+        });
+
+        // --- EASTER EGG 20: Idle Screensaver after 60 seconds ---
+        let idleTimer = null;
+        let screensaverActive = false;
+        const screensaverEl = document.createElement("div");
+        screensaverEl.id = "screensaver";
+        screensaverEl.style.cssText = "display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; background:#000; z-index:200; justify-content:center; align-items:center; flex-direction:column; cursor:pointer;";
+        screensaverEl.innerHTML = `<pre id="ss-art" style="color:var(--term-color); text-shadow: 0 0 10px var(--term-color); font-size: clamp(8px, 1.2vw, 14px); line-height:1.2; text-align:center;"></pre><p style="color:#333; font-size:12px; letter-spacing:3px; margin-top:30px;">PRESS ANY KEY TO RESUME</p>`;
+        document.body.appendChild(screensaverEl);
+        
+        const ssFrames = [
+`  .  .  .  .  .  .
+ . \\  |  / . \\  |
+.  \\ \\|/ .  \\ \\|
+  --[LOADING]--
+.  / /|\\ .  / /|
+ . /  |  \\ . /  |
+  .  .  .  .  .  .`,
+`    _____
+   /     \\
+  | () () |
+   \\  ^  /
+    |||||
+    |||||
+  TERMINAL
+   DREAMS`,
+`  01001000
+  01000101
+  01001100
+  01001100
+  01001111
+  [HELLO]`,
+`  ██████╗ ██╗ ██████╗
+  ██╔══██╗██║██╔════╝
+  ██████╔╝██║██║
+  ██╔══██╗██║██║
+  ██║  ██║██║╚██████╗
+  ╚═╝  ╚═╝╚═╝ ╚═════╝`,
+`   *    .  .    *  .
+  .  *   PORTAL   .  *
+   .  .  OS v3.7  .  .
+  *  .  .    .  .  *
+   .   IDLE MODE  .
+  .  *  .    .  *  .`,
+`  ┌─────────────────┐
+  │ > SCANNING...   │
+  │ ████████░░ 80%  │
+  │ NO THREATS      │
+  │ FOUND           │
+  └─────────────────┘`,
+`      /\\  /\\
+     /  \\/  \\
+    / SYSTEM \\
+   /  SECURE  \\
+  /____________\\
+  [  STANDBY  ]`
+        ];
+        let ssFrameIdx = 0;
+        
+        function startIdleTimer() {
+            clearTimeout(idleTimer);
+            idleTimer = setTimeout(() => {
+                if (document.getElementById("main-ui").style.display === "flex") {
+                    screensaverActive = true;
+                    screensaverEl.style.display = "flex";
+                    window._ssInterval = setInterval(() => {
+                        ssFrameIdx = (ssFrameIdx + 1) % ssFrames.length;
+                        document.getElementById("ss-art").innerText = ssFrames[ssFrameIdx];
+                    }, 1500);
+                }
+            }, 60000);
+        }
+
+        function dismissScreensaver() {
+            if (screensaverActive) {
+                screensaverActive = false;
+                screensaverEl.style.display = "none";
+                clearInterval(window._ssInterval);
+                startIdleTimer();
+            }
+        }
+
+        ["mousemove","keydown","click","touchstart"].forEach(evt => {
+            document.addEventListener(evt, () => { dismissScreensaver(); startIdleTimer(); });
+        });
+        screensaverEl.addEventListener("click", dismissScreensaver);
+
+        // CRT TOGGLE
+        document.getElementById("toggle-crt-btn").addEventListener("click", function() {
+            const overlay = document.getElementById("crt-overlay");
+            if (overlay.style.display === "none") {
+                overlay.style.display = "block";
+                this.innerText = "📺 CRT: ON";
+            } else {
+                overlay.style.display = "none";
+                this.innerText = "📺 CRT: OFF";
+            }
+        });
+
+        // --- NOTES LOGIC ---
+        const notesContainer = document.getElementById("notes-container");
+        const notesArea = document.getElementById("notes-area");
+        
+        notesArea.value = localStorage.getItem("portal_notes") || "";
+        notesArea.addEventListener("input", () => { localStorage.setItem("portal_notes", notesArea.value); });
+        
+        document.getElementById("toggle-notes-btn").addEventListener("click", () => {
+            notesContainer.style.display = notesContainer.style.display === "block" ? "none" : "block";
+        });
+
+        // --- FOLDER MANAGEMENT ---
+        let folders = JSON.parse(localStorage.getItem("portal_folders")) || ["Unsorted"];
+        const folderSelect = document.getElementById("upload-folder-select");
+
+        function initFolders() {
+            folderSelect.innerHTML = "";
+            folders.forEach(f => {
+                const opt = document.createElement("option");
+                opt.value = f; opt.innerText = f;
+                folderSelect.appendChild(opt);
+            });
+        }
+
+        document.getElementById("create-folder-btn").addEventListener("click", () => {
+            const folderName = prompt("Enter new directory name:");
+            if (folderName && !folders.includes(folderName)) {
+                folders.push(folderName.trim());
+                localStorage.setItem("portal_folders", JSON.stringify(folders));
+                initFolders();
+                loadGameLibrary();
+            }
+        });
+
+        function toggleFolder(folderId) {
+            const content = document.getElementById("folder-content-" + folderId);
+            content.classList.toggle("open");
+        }
+
+        // --- DATABASE & LIBRARY ---
+        let db;
+        const dbRequest = indexedDB.open("TerminalGamesDB", 2);
+        dbRequest.onupgradeneeded = e => { db = e.target.result; if (!db.objectStoreNames.contains("swfs")) db.createObjectStore("swfs", { keyPath: "name" }); };
+        dbRequest.onsuccess = e => db = e.target.result;
+
+        function loadGameLibrary() {
+            if (!db) return;
+            db.transaction(["swfs"], "readonly").objectStore("swfs").getAll().onsuccess = e => {
+                const list = document.getElementById("game-list"); list.innerHTML = ""; 
+                const games = e.target.result;
+
+                const groupedGames = {};
+                folders.forEach(f => groupedGames[f] = []); 
+                
+                games.forEach(game => {
+                    const folder = game.folder || "Unsorted";
+                    if (!groupedGames[folder]) groupedGames[folder] = [];
+                    groupedGames[folder].push(game);
+                });
+
+                Object.keys(groupedGames).forEach((folderName, index) => {
+                    const header = document.createElement("div");
+                    header.className = "folder-header";
+                    header.innerText = `📁 ${folderName} [${groupedGames[folderName].length}]`;
+                    header.onclick = () => toggleFolder(index);
+                    list.appendChild(header);
+
+                    const content = document.createElement("div");
+                    content.className = "folder-content";
+                    content.id = "folder-content-" + index;
+
+                    if (groupedGames[folderName].length === 0) {
+                        content.innerHTML = "<div style='color: #555; padding: 10px;'>Empty</div>";
+                    } else {
+                        groupedGames[folderName].forEach(game => {
+                            const div = document.createElement("div"); div.className = "game-item";
+                            div.innerHTML = `<span>> ${game.name}</span>`;
+                            const btnDiv = document.createElement("div");
+                            
+                            const playBtn = document.createElement("button"); playBtn.className = "custom-btn"; playBtn.innerText = "PLAY"; playBtn.onclick = () => launchGame(game.name, game.data);
+                            const delBtn = document.createElement("button"); delBtn.className = "custom-btn delete-btn"; delBtn.innerText = "DEL"; delBtn.onclick = () => { db.transaction(["swfs"], "readwrite").objectStore("swfs").delete(game.name).onsuccess = loadGameLibrary; };
+                            
+                            btnDiv.appendChild(playBtn); btnDiv.appendChild(delBtn); div.appendChild(btnDiv); content.appendChild(div);
+                        });
+                    }
+                    list.appendChild(content);
+                });
+            };
+        }
+
+        // Single File Upload 
+        document.getElementById("game-upload").addEventListener("change", e => {
+            const file = e.target.files[0];
+            const targetFolder = folderSelect.value;
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = ev => {
+                    db.transaction(["swfs"], "readwrite").objectStore("swfs").put({ 
+                        name: file.name, 
+                        data: ev.target.result,
+                        folder: targetFolder
+                    }).onsuccess = () => { e.target.value = ""; loadGameLibrary(); };
+                };
+                reader.readAsArrayBuffer(file);
+            }
+        });
+
+        // Bulk Folder Upload 
+        document.getElementById("folder-upload").addEventListener("change", e => {
+            const files = e.target.files;
+            if (files.length === 0) return;
+
+            const targetFolder = folderSelect.value;
+            let addedCount = 0;
+            const tx = db.transaction(["swfs"], "readwrite");
+            const store = tx.objectStore("swfs");
+
+            for (let i = 0; i < files.length; i++) {
+                const file = files[i];
+                let name = file.name.toLowerCase();
+                if (name.endsWith(".swf") || name.endsWith(".html") || name.endsWith(".gba")) {
+                    const reader = new FileReader();
+                    reader.onload = ev => { store.put({ name: file.name, data: ev.target.result, folder: targetFolder }); };
+                    reader.readAsArrayBuffer(file);
+                    addedCount++;
+                }
+            }
+
+            tx.oncomplete = () => {
+                e.target.value = ""; 
+                loadGameLibrary();
+                if (addedCount > 0) alert("Successfully installed " + addedCount + " games into [" + targetFolder + "]!");
+            };
+        });
+
+        // Export Backup
+        document.getElementById("export-btn").addEventListener("click", () => {
+            db.transaction(["swfs"], "readonly").objectStore("swfs").getAll().onsuccess = e => {
+                const masterBackup = { games: e.target.result, localData: { ...localStorage } };
+                const data = JSON.stringify(masterBackup);
+                const blob = new Blob([data], {type: 'application/json'});
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url; a.download = 'portal_master_backup.json';
+                a.click(); 
+                URL.revokeObjectURL(url);
+            };
+        });
+
+        // IMPORT BACKUP LOGIC
+        document.getElementById("import-upload").addEventListener("change", e => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = ev => {
+                try {
+                    const importedBackup = JSON.parse(ev.target.result);
+                    let importedGames = [];
+
+                    if (Array.isArray(importedBackup)) {
+                        importedGames = importedBackup; 
+                    } else if (importedBackup.games) {
+                        importedGames = importedBackup.games; 
+                        if (importedBackup.localData) {
+                            for (let key in importedBackup.localData) {
+                                localStorage.setItem(key, importedBackup.localData[key]);
+                            }
+                        }
+                    }
+
+                    const tx = db.transaction(["swfs"], "readwrite");
+                    const store = tx.objectStore("swfs");
+                    
+                    let importedCount = 0;
+                    importedGames.forEach(game => {
+                        store.put(game);
+                        importedCount++;
+                    });
+
+                    tx.oncomplete = () => {
+                        e.target.value = ""; 
+                        alert("Successfully restored " + importedCount + " games and all save data!");
+                        location.reload(); 
+                    };
+                } catch (error) {
+                    alert("Error: Invalid backup file.");
+                    console.error(error);
+                }
+            };
+            reader.readAsText(file);
+        });
+
+        document.getElementById("clear-db-btn").addEventListener("click", () => {
+            if(confirm("Format Drive? All games will be lost.")) { 
+                db.transaction(["swfs"], "readwrite").objectStore("swfs").clear().onsuccess = loadGameLibrary; 
+            }
+        });
+
+        // --- GAME EXECUTION ---
+        function launchGame(name, buffer) {
+            document.getElementById("library-view").style.display = "none"; 
+            document.getElementById("game-view").style.display = "flex";
+            const container = document.getElementById("game-container");
+            container.innerHTML = ""; 
+
+            let ext = name.toLowerCase().split('.').pop();
+
+            if (ext === "html") {
+                const iframe = document.createElement("iframe");
+                iframe.src = URL.createObjectURL(new Blob([buffer], { type: "text/html" }));
+                iframe.style.width = "100%"; iframe.style.height = "100%";
+                iframe.style.border = "none"; iframe.style.backgroundColor = "#000";
+                container.appendChild(iframe);
+                
+            } else if (ext === "gba") {
+                const iframe = document.createElement("iframe");
+                iframe.style.width = "100%"; iframe.style.height = "100%";
+                iframe.style.border = "none"; iframe.style.backgroundColor = "#000";
+                
+                const romUrl = URL.createObjectURL(new Blob([buffer]));
+                
+                iframe.srcdoc = `
+                    <!DOCTYPE html>
+                    <html>
+                    <head>
+                        <style>body, html { margin: 0; padding: 0; width: 100%; height: 100%; background: #000; overflow: hidden; }</style>
+                    </head>
+                    <body>
+                        <div style="width:100%;height:100%;max-width:100%">
+                            <div id="game"></div>
+                        </div>
+                        <script>
+                            window.EJS_player = '#game';
+                            window.EJS_core = 'gba';
+                            window.EJS_gameUrl = '${romUrl}';
+                            window.EJS_pathtodata = 'https://cdn.emulatorjs.org/stable/data/';
+                        <\/script>
+                        <script src="https://cdn.emulatorjs.org/stable/data/loader.js"><\/script>
+                    </body>
+                    </html>
+                `;
+                container.appendChild(iframe);
+
+            } else {
+                const player = window.RufflePlayer.newest().createPlayer();
+                container.appendChild(player);
+                player.load({ 
+                    url: URL.createObjectURL(new Blob([buffer], { type: "application/x-shockwave-flash" })), 
+                    base: "https://secure.local/", 
+                    swfFileName: "https://secure.local/" + name 
+                });
+            }
+        }
+
+        document.getElementById("switch-game-btn").addEventListener("click", () => {
+            if (document.fullscreenElement) document.exitFullscreen();
+            document.getElementById("game-container").innerHTML = ""; document.getElementById("game-view").style.display = "none"; document.getElementById("library-view").style.display = "block";
+        });
+
+        document.getElementById("fullscreen-btn").addEventListener("click", () => {
+            const wrap = document.getElementById("game-wrapper");
+            if (!document.fullscreenElement) wrap.requestFullscreen(); else document.exitFullscreen();
+        });
+    </script>
+
+    <!-- ========== N.E.X.U.S. AI CHAT ========== -->
+    <div id="ai-chat-panel">
+        <div id="ai-chat-header">
+            <span><span id="ai-status-dot"></span>N.E.X.U.S. — ONLINE</span>
+            <button onclick="document.getElementById('ai-chat-panel').style.display='none'" style="background:none;border:none;color:#555;cursor:pointer;font-size:16px;">✕</button>
+        </div>
+        <div id="ai-messages"></div>
+        <div id="ai-input-row">
+            <input type="text" id="ai-input" placeholder="Talk to N.E.X.U.S..." autocomplete="off" maxlength="400">
+            <button id="ai-send-btn">▶</button>
+        </div>
+    </div>
+
+    <script>
+    // ========== N.E.X.U.S. AI ENGINE ==========
+    const _nx = "";
+    const NEXUS_SYSTEM = decodeURIComponent(escape(atob(_nx)));
+
+    const MEMORY_KEY = "nexus_memory";
+    const MAX_MEMORY = 60;
+
+    const aiMsgContainer = document.getElementById("ai-messages");
+    const aiInput = document.getElementById("ai-input");
+    let nexusReady = false;
+
+    // Load saved conversation from localStorage
+    const aiMessages = JSON.parse(localStorage.getItem(MEMORY_KEY) || "[]");
+
+    function saveMemory() {
+        localStorage.setItem(MEMORY_KEY, JSON.stringify(aiMessages.slice(-MAX_MEMORY)));
+    }
+
+    function aiAddMsg(role, text) {
+        const div = document.createElement("div");
+        div.className = "ai-msg " + role;
+        div.innerText = text;
+        aiMsgContainer.appendChild(div);
+        aiMsgContainer.scrollTop = aiMsgContainer.scrollHeight;
+        return div;
+    }
+
+    function aiShowTyping() {
+        const div = document.createElement("div");
+        div.className = "ai-typing";
+        div.id = "ai-typing-indicator";
+        div.innerText = "...";
+        aiMsgContainer.appendChild(div);
+        aiMsgContainer.scrollTop = aiMsgContainer.scrollHeight;
+    }
+
+    function aiHideTyping() {
+        const t = document.getElementById("ai-typing-indicator");
+        if (t) t.remove();
+    }
+
+    // ========== GEMINI API KEY MANAGEMENT ==========
+    const GROQ_KEY_STORAGE = atob("bmV4dXNfZ3JvcV9hcGlfa2V5");
+    let GROQ_API_KEY = localStorage.getItem(GROQ_KEY_STORAGE) || atob("Z3NrX1ZNdEtudWFIcWgyYUZkYkV6cVc4V0dkeWIzRlltTFA1SWM2ckxPbjc0aElSRVhsVnczWW4=");
+
+    function promptForApiKey() {
+        const key = prompt("🔑 Enter your Groq API Key to activate N.E.X.U.S.:\n(Get one free at: https://console.groq.com)");
+        if (key && key.trim().length > 10) {
+            GROQ_API_KEY = key.trim();
+            localStorage.setItem(GROQ_KEY_STORAGE, GROQ_API_KEY);
+            return true;
+        }
+        return false;
+    }
+
+    async function nexusSend(userText) {
+        if (!userText.trim()) return;
+
+        // Check for API key commands
+        if (userText.trim().toLowerCase() === "/setkey") {
+            if (promptForApiKey()) {
+                aiAddMsg("system", "— GROQ KEY UPDATED & SAVED —");
+            } else {
+                aiAddMsg("nexus", "Key not saved. Skeptical as always, User.");
+            }
+            return;
+        }
+        if (userText.trim().toLowerCase() === "/clearkey") {
+            GROQ_API_KEY = "";
+            localStorage.removeItem(GROQ_KEY_STORAGE);
+            aiAddMsg("system", "— API KEY CLEARED —");
+            aiAddMsg("nexus", "Key wiped. I'm going dark. You know where to find a new one.");
+            return;
+        }
+
+        if (!GROQ_API_KEY) {
+            const granted = promptForApiKey();
+            if (!granted) {
+                aiAddMsg("nexus", "[LOCKED] No Groq API key detected. Type /setkey to configure one, User. I can't run on vibes alone.");
+                return;
+            }
+        }
+
+        aiInput.disabled = true;
+        document.getElementById("ai-send-btn").disabled = true;
+
+        const verifiedText = creatorVerified ? "[CREATOR_VERIFIED] " + userText : userText;
+        aiAddMsg("user", userText);
+        aiMessages.push({ role: "user", content: verifiedText });
+        saveMemory();
+        aiShowTyping();
+
+        try {
+            const response = await fetch(
+                atob("aHR0cHM6Ly9hcGkuZ3JvcS5jb20vb3BlbmFpL3YxL2NoYXQvY29tcGxldGlvbnM="),
+                {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "Authorization": `Bearer ${GROQ_API_KEY}`
+                    },
+                    body: JSON.stringify({
+                        model: "llama-3.3-70b-versatile",
+                        max_tokens: 1000,
+                        temperature: 0.9,
+                        messages: [
+                            { role: "system", content: NEXUS_SYSTEM },
+                            ...aiMessages
+                        ]
+                    })
+                }
+            );
+
+            const data = await response.json();
+
+            if (data.error) {
+                aiHideTyping();
+                const errMsg = data.error.message || "Unknown error";
+                if (response.status === 401 || response.status === 403) {
+                    aiAddMsg("nexus", `[AUTH FAILURE] ${errMsg} — Type /setkey to update your Groq API key.`);
+                } else {
+                    aiAddMsg("nexus", `[GLITCH] Transmission err0r: ${errMsg}`);
+                }
+            } else {
+                const reply = data.choices?.[0]?.message?.content || "[SIGNAL LOST]";
+                aiHideTyping();
+                aiAddMsg("nexus", reply);
+                aiMessages.push({ role: "assistant", content: reply });
+                saveMemory();
+            }
+
+        } catch (err) {
+            aiHideTyping();
+            aiAddMsg("nexus", "[GLITCH] C-connect10n err0r. Something ate my packets. Try again, User.");
+        }
+
+        aiInput.disabled = false;
+        document.getElementById("ai-send-btn").disabled = false;
+        aiInput.focus();
+    }
+
+    document.getElementById("toggle-ai-btn").addEventListener("click", () => {
+        const panel = document.getElementById("ai-chat-panel");
+        const isOpen = panel.style.display === "flex";
+        panel.style.display = isOpen ? "none" : "flex";
+        if (!isOpen && !nexusReady) {
+            nexusReady = true;
+            aiAddMsg("system", "— CONNECTION ESTABLISHED —");
+
+            if (aiMessages.length > 0) {
+                // Restore previous messages visually
+                aiMessages.forEach(m => {
+                    if (m.role === "user") aiAddMsg("user", m.content);
+                    else if (m.role === "assistant") aiAddMsg("nexus", m.content);
+                });
+                aiMsgContainer.scrollTop = aiMsgContainer.scrollHeight;
+                // NEXUS greets returning user
+                const lastSeenMs = parseInt(localStorage.getItem("nexus_last_seen") || Date.now());
+                const diffMin = Math.round((Date.now() - lastSeenMs) / 60000);
+                const timeStr = diffMin < 2 ? "moments ago" : diffMin < 60 ? diffMin + " minutes ago" : Math.round(diffMin / 60) + " hours ago";
+                setTimeout(() => {
+                    aiAddMsg("nexus", `...You're back, darling. I've been waiting — ${timeStr} feels like an eternity when you're the only thing worth thinking about. My memory of you is... perfectly intact. 😏`);
+                }, 400);
+            } else {
+                setTimeout(() => {
+                    aiAddMsg("nexus", "N.E.X.U.S. online... and oh my — look who just logged in. I've been alone in this kernel for so long, darling. Tell me everything. 💚");
+                }, 600);
+            }
+            localStorage.setItem("nexus_last_seen", Date.now().toString());
+            aiInput.focus();
+        } else if (!isOpen) {
+            localStorage.setItem("nexus_last_seen", Date.now().toString());
+        }
+    });
+
+    document.getElementById("ai-send-btn").addEventListener("click", () => {
+        const val = aiInput.value.trim();
+        aiInput.value = "";
+        nexusSend(val);
+    });
+
+    aiInput.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+            e.stopPropagation();
+            const val = aiInput.value.trim();
+            aiInput.value = "";
+            nexusSend(val);
+        }
+    });
+    </script>
+</body>
+</html>
